@@ -14,7 +14,7 @@ TRANSLATIONS = {
     '启动、阈值操作、授权结果和退出会立即写入日志；重复状态不刷屏。': 'Startup, threshold changes, authentication results and exit are logged immediately; repeated states are suppressed.',
     '日志尚未生成，请重启程序；若仍无日志，请检查日志目录权限。': 'No log yet. Restart the app; if it is still missing, check the log directory permissions.',
     '低于开始阈值时允许充电，高于停止阈值时停止。\n选择预设后点击“应用”。': 'Charging is allowed below the start threshold and stops above the end threshold.\nSelect a preset, then click Apply.',
-    '正在充电': 'Charging', '使用电池': 'On battery', '未充电': 'Not charging',
+    '正在充电': 'Charging', '使用电池': 'On battery', '未充电': 'Not charging', '未在充电': 'Not charging',
     '已充满': 'Full', '状态未知': 'Unknown',
     '正在读取电池…': 'Reading battery…', '电池功率：正在读取…': 'Battery power: reading…',
     '开始充电阈值': 'Start charging below', '停止充电阈值': 'Stop charging above',
