@@ -11,8 +11,8 @@ END = 'charge_control_end_threshold'
 
 
 def validate(start, end):
-    if not 0 <= start < end <= 100:
-        raise ValueError('阈值必须满足 0 ≤ 开始 < 停止 ≤ 100。')
+    if not (0 <= start < end <= 100 or start == end == 100):
+        raise ValueError('Thresholds must satisfy 0 <= start < end <= 100, or 100 / 100 for a full charge.\n阈值必须满足 0 ≤ 开始 < 停止 ≤ 100，或使用 100 / 100 允许充满。')
 
 
 def read_pair(path):
@@ -42,25 +42,25 @@ def apply_thresholds(start, end, path=BATTERY):
         try:
             write_pair(path, *previous)
             restored = read_pair(path)
-            recovery = f'已尝试恢复，当前阈值为 {restored[0]}% / {restored[1]}%。'
+            recovery = f'Recovery attempted; current thresholds: {restored[0]}% / {restored[1]}%.\n已尝试恢复，当前阈值为 {restored[0]}% / {restored[1]}%。'
         except (OSError, ValueError) as restore_error:
-            recovery = f'恢复失败：{restore_error}。请检查实际阈值。'
-        raise RuntimeError(f'设置失败：{exc}。{recovery}') from exc
+            recovery = f'Recovery failed: {restore_error}. Check the actual thresholds.\n恢复失败：{restore_error}。请检查实际阈值。'
+        raise RuntimeError(f'Failed to apply thresholds / 设置失败：{exc}。{recovery}') from exc
 
 
 def main():
     try:
         if len(sys.argv) != 3:
-            raise ValueError('用法：threshold_helper.py START END')
+            raise ValueError('Usage: threshold_helper.py START END\n用法：threshold_helper.py START END')
         start, end = map(int, sys.argv[1:])
         validate(start, end)
         if os.geteuid() != 0:
-            raise PermissionError('请通过 pkexec 授权执行。')
+            raise PermissionError('Run with authentication via pkexec.\n请通过 pkexec 授权执行。')
         actual = apply_thresholds(start, end)
         print(json.dumps({'start': actual[0], 'end': actual[1]}))
         return 0
     except (OSError, ValueError, RuntimeError) as exc:
-        print(str(exc), file=sys.stderr)
+        print(f'Error / 错误：{exc}', file=sys.stderr)
         return 1
 
 

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 import threshold_helper as helper
-from battery_backend import read_snapshot
+from battery_backend import read_snapshot, format_power
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
@@ -33,7 +33,39 @@ class FakeSysfs:
         return File()
 
 
+class MacsmcSysfs(FakeSysfs):
+    """Coupled thresholds: start writes ignored; disabled limits read 100/100."""
+    def __truediv__(self, name):
+        owner = self
+        class File:
+            def read_text(self):
+                return str(owner.values[name])
+            def write_text(self, text):
+                value = int(text)
+                if (name, value) == owner.fail:
+                    owner.fail = None
+                    raise OSError('simulated write failure')
+                owner.writes.append((name, value))
+                if name == helper.END:
+                    owner.values = {helper.END: value, helper.START: 100 if value == 100 else value - 5}
+        return File()
+
+
 class ThresholdTests(unittest.TestCase):
+    def test_macsmc_full_charge_and_return(self):
+        for target in [(95, 100), (100, 100)]:
+            fs = MacsmcSysfs(55, 60)
+            self.assertEqual(helper.apply_thresholds(*target, path=fs), (100, 100))
+            self.assertEqual(helper.apply_thresholds(100, 100, path=fs), (100, 100))
+            self.assertEqual(helper.apply_thresholds(75, 80, path=fs), (75, 80))
+            self.assertEqual(helper.apply_thresholds(55, 60, path=fs), (55, 60))
+
+    def test_macsmc_failure_preserves_full_charge(self):
+        fs = MacsmcSysfs(100, 100, fail=(helper.END, 80))
+        with self.assertRaises(RuntimeError):
+            helper.apply_thresholds(75, 80, path=fs)
+        self.assertEqual(helper.read_pair(fs), (100, 100))
+
     def test_transitions(self):
         for old, new in [((75,80),(55,60)), ((55,60),(95,100)), ((75,80),(70,85)), ((75,80),(75,80)), ((75,80),(0,1))]:
             with self.subTest(old=old, new=new):
@@ -90,6 +122,28 @@ class ThresholdTests(unittest.TestCase):
             for name, value in {'energy_now': '3', 'energy_full': '4', 'status': 'Discharging', helper.START: '55', helper.END: '60'}.items():
                 (path/name).write_text(value)
             self.assertEqual(read_snapshot(path).capacity, 75)
+
+    def test_power_readings(self):
+        cases = [
+            ({'power_now': '28999000'}, 28.999, '充电功率：29.0 W'),
+            ({'power_now': '-7464000'}, -7.464, '放电功率：7.5 W'),
+            ({'power_now': '0', 'voltage_now': '12000000', 'current_now': '2000000'}, 0, '电池功率：0.0 W'),
+            ({'voltage_now': '12000000', 'current_now': '2000000'}, 24, '充电功率：24.0 W'),
+            ({'power_now': 'bad', 'voltage_now': '12000000', 'current_now': '-500000'}, -6, '放电功率：6.0 W'),
+            ({'voltage_now': '0', 'current_now': '2000000'}, None, '电池功率：不可用'),
+            ({'voltage_now': '12000000'}, None, '电池功率：不可用'),
+            ({'power_now': 'bad'}, None, '电池功率：不可用'),
+            ({}, None, '电池功率：不可用'),
+        ]
+        for extra, expected, label in cases:
+            with self.subTest(extra=extra), TemporaryDirectory() as folder:
+                path = Path(folder)
+                for name, value in {'capacity': '76', 'status': 'Unknown', helper.START: '75', helper.END: '80', **extra}.items():
+                    (path/name).write_text(value)
+                state = read_snapshot(path)
+                self.assertEqual(state.power_watts, expected)
+                self.assertEqual(format_power(state.power_watts), label)
+                self.assertEqual(state.capacity, 76)
 
     def test_missing_interface(self):
         with TemporaryDirectory() as folder:
